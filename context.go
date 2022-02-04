@@ -57,6 +57,7 @@ type Context struct {
 	width         int
 	height        int
 	rasterizer    *raster.Rasterizer
+	transformer   draw.Transformer
 	im            *image.RGBA
 	mask          *image.Alpha
 	color         color.Color
@@ -100,6 +101,7 @@ func NewContextForRGBA(im *image.RGBA) *Context {
 		width:         w,
 		height:        h,
 		rasterizer:    raster.NewRasterizer(w, h),
+		transformer:   draw.BiLinear,
 		im:            im,
 		color:         color.Transparent,
 		fillPattern:   defaultFillStyle,
@@ -110,6 +112,12 @@ func NewContextForRGBA(im *image.RGBA) *Context {
 		fontHeight:    13,
 		matrix:        Identity(),
 	}
+}
+
+// SetTransformer sets the transformer used for image and text drawing.
+// List of all predefined transformers: https://pkg.go.dev/golang.org/x/image/draw#pkg-variables
+func (dc *Context) SetTransformer(transformer draw.Transformer) {
+	dc.transformer = transformer
 }
 
 // GetCurrentPoint will return the current point and if there is a current point.
@@ -673,14 +681,13 @@ func (dc *Context) DrawImageAnchored(im image.Image, x, y int, ax, ay float64) {
 	s := im.Bounds().Size()
 	x -= int(ax * float64(s.X))
 	y -= int(ay * float64(s.Y))
-	transformer := draw.BiLinear
 	fx, fy := float64(x), float64(y)
 	m := dc.matrix.Translate(fx, fy)
 	s2d := f64.Aff3{m.XX, m.XY, m.X0, m.YX, m.YY, m.Y0}
 	if dc.mask == nil {
-		transformer.Transform(dc.im, s2d, im, im.Bounds(), draw.Over, nil)
+		dc.transformer.Transform(dc.im, s2d, im, im.Bounds(), draw.Over, nil)
 	} else {
-		transformer.Transform(dc.im, s2d, im, im.Bounds(), draw.Over, &draw.Options{
+		dc.transformer.Transform(dc.im, s2d, im, im.Bounds(), draw.Over, &draw.Options{
 			DstMask:  dc.mask,
 			DstMaskP: image.ZP,
 		})
@@ -728,11 +735,10 @@ func (dc *Context) drawString(im *image.RGBA, s string, x, y float64) {
 			continue
 		}
 		sr := dr.Sub(dr.Min)
-		transformer := draw.ApproxBiLinear
 		fx, fy := float64(dr.Min.X), float64(dr.Min.Y)
 		m := dc.matrix.Translate(fx, fy)
 		s2d := f64.Aff3{m.XX, m.XY, m.X0, m.YX, m.YY, m.Y0}
-		transformer.Transform(d.Dst, s2d, d.Src, sr, draw.Over, &draw.Options{
+		dc.transformer.Transform(d.Dst, s2d, d.Src, sr, draw.Over, &draw.Options{
 			SrcMask:  mask,
 			SrcMaskP: maskp,
 		})
